@@ -31,16 +31,20 @@ class Rivus < Formula
       exec "#{formula_opt_bin("dart-sdk")}/dart" "#{dart_dir}/rivus_dart.dill" "$@"
     SH
 
-    # Rust: the nightly toolchain and the extractor are built inside the keg, so that
-    # the rpaths recorded by cargo point at the toolchain's final location.
-    rust_home = libexec/"rustup"
-    cargo_home = libexec/"cargo"
+    # Rust: the pinned nightly lives outside the keg, in var/rivus/rustup, so that Homebrew's
+    # relocation does not touch it (it cannot rewrite the dylib IDs of rustup's libraries) and an
+    # upgrade does not download it again. The extractor is built with it, so the rpath recorded
+    # by cargo points at the toolchain's final location.
+    rust_home = var/"rivus/rustup"
     arch = Hardware::CPU.arm? ? "aarch64" : "x86_64"
     tc = rust_home/"toolchains/#{toolchain}-#{arch}-apple-darwin"
     ENV["RUSTUP_HOME"] = rust_home
-    ENV["CARGO_HOME"] = cargo_home
-    system formula_opt_bin("rustup")/"rustup", "toolchain", "install", toolchain,
-           "--profile", "minimal", "-c", "rustc-dev", "-c", "llvm-tools", "-c", "rust-src", "--no-self-update"
+    rust_home.mkpath
+    toolchain_ready = (tc/"bin/cargo").exist? && Dir[tc/"lib/librustc_driver-*.dylib"].any?
+    unless toolchain_ready
+      system formula_opt_bin("rustup")/"rustup", "toolchain", "install", toolchain,
+             "--profile", "minimal", "-c", "rustc-dev", "-c", "llvm-tools", "-c", "rust-src", "--no-self-update"
+    end
 
     home = buildpath/"home"
     mkdir_p home
@@ -54,7 +58,12 @@ class Rivus < Formula
     ) do
       system tc/"bin/cargo", "install", "--path", "extractor/rust", "--locked", "--root", libexec/"rust-ext"
     end
-    rm_r cargo_home if cargo_home.exist?
+    # Drop the toolchains of other versions (only inside var/rivus/rustup) and rustup's scratch space.
+    %w[toolchains update-hashes].each do |dir|
+      next unless (rust_home/dir).directory?
+
+      (rust_home/dir).children.each { |child| rm_r child if child.basename.to_s != tc.basename.to_s }
+    end
     rm_r rust_home/"downloads" if (rust_home/"downloads").exist?
     rm_r rust_home/"tmp" if (rust_home/"tmp").exist?
 
@@ -69,8 +78,10 @@ class Rivus < Formula
   def caveats
     <<~EOS
       Rust analysis runs under the macOS sandbox (sandbox-exec).
-      Installing downloads about 1.1 GB from static.rust-lang.org and crates.io
-      and keeps it in this keg.
+      Installing downloads about 1.1 GB from static.rust-lang.org and crates.io.
+      The pinned Rust toolchain is kept in #{var}/rivus, outside the keg, so
+      `brew uninstall rivus` does not remove it. To remove it:
+        rm -rf "#{var}/rivus"
       Rust analysis fetches the dependencies of the target project from crates.io.
 
       Dart analysis runs a kernel snapshot built against the dart-sdk that was
@@ -83,7 +94,12 @@ class Rivus < Formula
   end
 
   test do
-    assert_match "0.0.1", shell_output("#{bin}/rivus version")
+    assert_match version.to_s, shell_output("#{bin}/rivus version")
     assert_match "analyze", shell_output("#{bin}/rivus help 2>&1")
+
+    # The Rust extractor starts (no dyld error); it exits with 2 for a directory that is not there.
+    output = shell_output("#{libexec}/rust-ext/bin/rivus-rust #{testpath}/none 2>&1", 2)
+    refute_match "dyld", output
+    assert_match "rivus-rust:", output
   end
 end
