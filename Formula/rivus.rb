@@ -54,7 +54,7 @@ class Rivus < Formula
     ) do
       system tc/"bin/cargo", "install", "--path", "extractor/rust", "--locked", "--root", libexec/"rust-ext"
     end
-    rm_r cargo_home
+    rm_r cargo_home if cargo_home.exist?
     rm_r rust_home/"downloads" if (rust_home/"downloads").exist?
     rm_r rust_home/"tmp" if (rust_home/"tmp").exist?
 
