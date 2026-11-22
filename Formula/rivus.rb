@@ -18,15 +18,17 @@ class Rivus < Formula
 
     system "go", "build", *std_go_args(output: libexec/"bin/rivus", ldflags: "-s -w -X main.versionStamp=#{version}"), "./cmd/rivus"
 
-    libexec.install "extractor/dart/bin", "extractor/dart/lib", "extractor/dart/pubspec.yaml", "extractor/dart/pubspec.lock"
-    cd libexec do
+    dart_dir = libexec/"dart"
+    dart_dir.mkpath
+    cp_r %w[extractor/dart/bin extractor/dart/lib extractor/dart/pubspec.yaml extractor/dart/pubspec.lock], dart_dir
+    cd dart_dir do
       system "dart", "pub", "get", "--enforce-lockfile"
       system "dart", "compile", "kernel", "bin/rivus_dart.dart", "-o", "rivus_dart.dill"
       rm_r ".dart_tool"
     end
     (bin/"rivus-dart").write <<~SH
       #!/bin/sh
-      exec "#{Formula["dart-sdk"].opt_bin}/dart" "#{libexec}/rivus_dart.dill" "$@"
+      exec "#{Formula["dart-sdk"].opt_bin}/dart" "#{dart_dir}/rivus_dart.dill" "$@"
     SH
 
     # Rust: the nightly toolchain and the extractor are built inside the keg, so that
