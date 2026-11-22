@@ -4,7 +4,6 @@ class Rivus < Formula
   url "https://github.com/yagihash/rivus/archive/refs/tags/v0.0.2.tar.gz"
   sha256 "c64cd11e2df21cde3417f572657ec0c6008434a73195891551241ddc1a48d83d"
   license "Apache-2.0"
-  revision 1
   head "https://github.com/yagihash/rivus.git", branch: "main"
 
   depends_on "rustup" => :build
