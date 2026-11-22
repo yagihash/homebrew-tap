@@ -6,10 +6,10 @@ class Rivus < Formula
   license "Apache-2.0"
   head "https://github.com/yagihash/rivus.git", branch: "main"
 
-  depends_on :macos
+  depends_on "rustup" => :build
   depends_on "dart-sdk"
   depends_on "go"
-  depends_on "rustup" => :build
+  depends_on :macos
 
   def install
     toolchain = "nightly-2026-11-15"
@@ -28,7 +28,7 @@ class Rivus < Formula
     end
     (bin/"rivus-dart").write <<~SH
       #!/bin/sh
-      exec "#{Formula["dart-sdk"].opt_bin}/dart" "#{dart_dir}/rivus_dart.dill" "$@"
+      exec "#{formula_opt_bin("dart-sdk")}/dart" "#{dart_dir}/rivus_dart.dill" "$@"
     SH
 
     # Rust: the nightly toolchain and the extractor are built inside the keg, so that
@@ -39,18 +39,18 @@ class Rivus < Formula
     tc = rust_home/"toolchains/#{toolchain}-#{arch}-apple-darwin"
     ENV["RUSTUP_HOME"] = rust_home
     ENV["CARGO_HOME"] = cargo_home
-    system Formula["rustup"].opt_bin/"rustup", "toolchain", "install", toolchain,
+    system formula_opt_bin("rustup")/"rustup", "toolchain", "install", toolchain,
            "--profile", "minimal", "-c", "rustc-dev", "-c", "llvm-tools", "-c", "rust-src", "--no-self-update"
 
     home = buildpath/"home"
     mkdir_p home
     with_env(
-      SDKROOT:             MacOS.sdk_path.to_s,
-      PATH:                "#{tc}/bin:/usr/bin:/bin",
-      HOME:                home.to_s,
-      RUSTUP_TOOLCHAIN:    toolchain,
-      CARGO_HOME:          (buildpath/"cargo").to_s,
-      CARGO_TARGET_DIR:    (buildpath/"target").to_s,
+      SDKROOT:          MacOS.sdk_path.to_s,
+      PATH:             "#{tc}/bin:/usr/bin:/bin",
+      HOME:             home.to_s,
+      RUSTUP_TOOLCHAIN: toolchain,
+      CARGO_HOME:       (buildpath/"cargo").to_s,
+      CARGO_TARGET_DIR: (buildpath/"target").to_s,
     ) do
       system tc/"bin/cargo", "install", "--path", "extractor/rust", "--locked", "--root", libexec/"rust-ext"
     end
