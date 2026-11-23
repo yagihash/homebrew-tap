@@ -12,9 +12,16 @@ class Rivus < Formula
   depends_on :macos
 
   def install
-    toolchain = "nightly-2026-11-15"
-    pinned = (buildpath/"extractor/rust/rust-toolchain.toml").read[/^channel\s*=\s*"([^"]+)"/, 1]
-    odie "the pinned toolchain is #{pinned}, expected #{toolchain}" if pinned != toolchain
+    # The Rust nightly is pinned by rivus itself: extractor/rust/rust-toolchain.toml in the source tree is the single
+    # source of truth, so this formula holds no date and a release that bumps the nightly needs no change here.
+    toolchain_file = buildpath/"extractor/rust/rust-toolchain.toml"
+    odie "extractor/rust/rust-toolchain.toml is missing from the source tree" unless toolchain_file.file?
+    toolchain = toolchain_file.read[/^channel\s*=\s*"([^"]*)"/, 1]
+    odie "extractor/rust/rust-toolchain.toml has no `channel = \"...\"` line" if toolchain.nil?
+    odie "the `channel` in extractor/rust/rust-toolchain.toml is empty" if toolchain.empty?
+    unless toolchain.match?(/\Anightly-\d{4}-\d{2}-\d{2}\z/)
+      odie "the `channel` in extractor/rust/rust-toolchain.toml is #{toolchain.inspect}, expected nightly-YYYY-MM-DD"
+    end
 
     system "go", "build", *std_go_args(output: libexec/"bin/rivus", ldflags: "-s -w -X main.versionStamp=#{version}"), "./cmd/rivus"
 
