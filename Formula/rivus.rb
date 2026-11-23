@@ -18,17 +18,18 @@ class Rivus < Formula
 
     system "go", "build", *std_go_args(output: libexec/"bin/rivus", ldflags: "-s -w -X main.versionStamp=#{version}"), "./cmd/rivus"
 
-    dart_dir = libexec/"dart"
-    dart_dir.mkpath
-    cp_r %w[extractor/dart/bin extractor/dart/lib extractor/dart/pubspec.yaml extractor/dart/pubspec.lock], dart_dir
-    cd dart_dir do
+    # Dart: the extractor is compiled to a native executable (about 0.2-0.6 s to start, against 1.6-3.8 s for a kernel
+    # snapshot). The executable reads the `dart:*` sources of a Dart SDK at run time, so it is not self-contained:
+    # the wrappers below put dart-sdk's bin first on PATH, where rivus finds the SDK from the `dart` it finds there.
+    cd "extractor/dart" do
       system "dart", "pub", "get", "--enforce-lockfile"
-      system "dart", "compile", "kernel", "bin/rivus_dart.dart", "-o", "rivus_dart.dill"
-      rm_r ".dart_tool"
+      system "dart", "compile", "exe", "bin/rivus_dart.dart", "-o", libexec/"rivus-dart"
     end
+    dart_path = formula_opt_bin("dart-sdk")
     (bin/"rivus-dart").write <<~SH
       #!/bin/sh
-      exec "#{formula_opt_bin("dart-sdk")}/dart" "#{dart_dir}/rivus_dart.dill" "$@"
+      export PATH="#{dart_path}:$PATH"
+      exec "#{libexec}/rivus-dart" "$@"
     SH
 
     # Rust: the pinned nightly lives outside the keg, in var/rivus/rustup, so that Homebrew's
@@ -69,6 +70,8 @@ class Rivus < Formula
 
     (bin/"rivus").write <<~SH
       #!/bin/sh
+      export PATH="#{dart_path}:$PATH"
+      export RIVUS_DART_EXTRACTOR="${RIVUS_DART_EXTRACTOR:-#{libexec}/rivus-dart}"
       export RIVUS_RUST_TOOLCHAIN_DIR="${RIVUS_RUST_TOOLCHAIN_DIR:-#{tc}}"
       export RIVUS_RUST_EXTRACTOR="${RIVUS_RUST_EXTRACTOR:-#{libexec}/rust-ext/bin/rivus-rust}"
       exec "#{libexec}/bin/rivus" "$@"
@@ -84,10 +87,14 @@ class Rivus < Formula
         rm -rf "#{var}/rivus"
       Rust analysis fetches the dependencies of the target project from crates.io.
 
-      Dart analysis runs a kernel snapshot built against the dart-sdk that was
-      installed at build time. If Dart analysis fails with a kernel version
-      mismatch after dart-sdk has been updated, run:
-        brew reinstall rivus
+      Dart analysis runs an executable compiled at install time (#{libexec}/rivus-dart).
+      It reads the Dart SDK's `dart:*` sources at run time, from the dart-sdk
+      formula (the `rivus` command puts its bin first on PATH; RIVUS_DART_SDK
+      overrides it). The executable does not embed the SDK, so it is not tied to
+      the SDK's kernel version. Not verified: whether a much newer dart-sdk
+      changes the analysis. To check, run `rivus sites -lang dart` on a small
+      project after `brew upgrade dart-sdk`, and `brew reinstall rivus` if it
+      fails or differs.
 
       Run `dart pub get` in the target project before Dart analysis.
     EOS
@@ -96,6 +103,18 @@ class Rivus < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/rivus version")
     assert_match "analyze", shell_output("#{bin}/rivus help 2>&1")
+
+    # The Dart extractor runs through the wrapper (it needs dart-sdk's sources) and finds a call in a small project.
+    (testpath/"dart/lib").mkpath
+    (testpath/"dart/pubspec.yaml").write "name: demo\nenvironment:\n  sdk: ^3.8.0\n"
+    (testpath/"dart/lib/main.dart").write <<~DART
+      import "dart:io";
+      void main(List<String> a) {
+        Process.run("sh", ["-c", a.first]);
+      }
+    DART
+    sites = shell_output("#{bin}/rivus sites -lang dart -C #{testpath}/dart")
+    assert_match "dart:io#Process.run", sites
 
     # The Rust extractor starts (no dyld error); it exits with 2 for a directory that is not there.
     output = shell_output("#{libexec}/rust-ext/bin/rivus-rust #{testpath}/none 2>&1", 2)
