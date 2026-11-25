@@ -1,8 +1,8 @@
 class Rivus < Formula
   desc "Cross-file taint analysis query engine for Go, Dart and Rust"
   homepage "https://github.com/yagihash/rivus"
-  url "https://github.com/yagihash/rivus/archive/refs/tags/v0.0.17.tar.gz"
-  sha256 "cf083316c7b21c494ed5e58952a40a2778723fd6beebf3d10553cc5bb3aea774"
+  url "https://github.com/yagihash/rivus/archive/refs/tags/v0.0.18.tar.gz"
+  sha256 "5524eebaa9b6cc60f03f409c6298e04895fc621f8ed34d268417dd0b9e9f45c5"
   license "Apache-2.0"
   head "https://github.com/yagihash/rivus.git", branch: "main"
 
