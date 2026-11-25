@@ -8,10 +8,13 @@ class Rivus < Formula
 
   depends_on "rustup" => :build
   depends_on "dart-sdk"
+  depends_on "gh" => :build
   depends_on "go"
   depends_on :macos
 
   def install
+    verify_source_attestation unless build.head?
+
     # The Rust nightly is pinned by rivus itself: extractor/rust/rust-toolchain.toml in the source tree is the single
     # source of truth, so this formula holds no date and a release that bumps the nightly needs no change here.
     toolchain_file = buildpath/"extractor/rust/rust-toolchain.toml"
@@ -104,8 +107,29 @@ class Rivus < Formula
     SH
   end
 
+  # Before anything is built, the source tarball must be the asset that rivus's release workflow built and attested
+  # (rivus_X.Y.Z_source.tar.gz of the Release, which `url` points at):
+  #   - build provenance: made by yagihash/rivus's tagpr.yml (actions/attest-build-provenance)
+  #   - release attestation: made by GitHub when the immutable Release was published; it ties the file to the tag's Release
+  # Either failing aborts the install. `gh` needs a login (`gh auth login`, or HOMEBREW_GITHUB_API_TOKEN / GH_TOKEN).
+  def verify_source_attestation
+    tarball = cached_download
+    gh = formula_opt_bin("gh")/"gh"
+    token = ENV["GH_TOKEN"].presence || ENV["HOMEBREW_GITHUB_API_TOKEN"].presence
+    env = token ? { GH_TOKEN: token } : {}
+    with_env(**env) do
+      system gh, "attestation", "verify", tarball, "--repo", "yagihash/rivus",
+             "--signer-workflow", "yagihash/rivus/.github/workflows/tagpr.yml"
+      system gh, "release", "verify-asset", "v#{version}", tarball, "--repo", "yagihash/rivus"
+    end
+  end
+
   def caveats
     <<~EOS
+      The source is verified at install time with `gh attestation verify` and `gh release verify-asset`,
+      so `gh` must be logged in (`gh auth login`, or set HOMEBREW_GITHUB_API_TOKEN) before installing.
+      If the verification fails, the install stops.
+
       Rust analysis runs under the macOS sandbox (sandbox-exec).
       Installing downloads about 1.1 GB from static.rust-lang.org and crates.io.
       The pinned Rust toolchain is kept in #{var}/rivus, outside the keg, so
