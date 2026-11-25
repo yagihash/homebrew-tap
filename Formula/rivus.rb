@@ -111,23 +111,34 @@ class Rivus < Formula
   # (rivus_X.Y.Z_source.tar.gz of the Release, which `url` points at):
   #   - build provenance: made by yagihash/rivus's tagpr.yml (actions/attest-build-provenance)
   #   - release attestation: made by GitHub when the immutable Release was published; it ties the file to the tag's Release
-  # Either failing aborts the install. `gh` needs a login (`gh auth login`, or HOMEBREW_GITHUB_API_TOKEN / GH_TOKEN).
+  # Either failing aborts the install. `gh` needs a token: Homebrew's build sandbox denies reading ~/.config/gh
+  # (so `gh auth login` alone is not seen) and bin/brew drops GH_TOKEN, so pass it as HOMEBREW_GITHUB_API_TOKEN:
+  #   HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade rivus
   def verify_source_attestation
     tarball = cached_download
     gh = formula_opt_bin("gh")/"gh"
     token = ENV["GH_TOKEN"].presence || ENV["HOMEBREW_GITHUB_API_TOKEN"].presence
     env = token ? { GH_TOKEN: token } : {}
-    with_env(**env) do
+    with_env(env) do
       system gh, "attestation", "verify", tarball, "--repo", "yagihash/rivus",
              "--signer-workflow", "yagihash/rivus/.github/workflows/tagpr.yml"
       system gh, "release", "verify-asset", "v#{version}", tarball, "--repo", "yagihash/rivus"
     end
+  rescue ErrorDuringExecution, BuildError
+    odie <<~EOS
+      Could not verify the source tarball's attestations, so the install is stopped.
+      `gh` needs a GitHub token, and Homebrew's build sandbox does not let it read `gh auth login`'s credentials.
+      Pass one through HOMEBREW_GITHUB_API_TOKEN, for example:
+        HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade rivus
+    EOS
   end
 
   def caveats
     <<~EOS
       The source is verified at install time with `gh attestation verify` and `gh release verify-asset`,
-      so `gh` must be logged in (`gh auth login`, or set HOMEBREW_GITHUB_API_TOKEN) before installing.
+      so `gh` needs a GitHub token. Homebrew's build sandbox does not let `gh` read `gh auth login`'s
+      credentials, so pass the token through HOMEBREW_GITHUB_API_TOKEN when installing or upgrading:
+        HOMEBREW_GITHUB_API_TOKEN="$(gh auth token)" brew upgrade rivus
       If the verification fails, the install stops.
 
       Rust analysis runs under the macOS sandbox (sandbox-exec).
