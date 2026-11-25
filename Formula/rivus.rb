@@ -23,14 +23,31 @@ class Rivus < Formula
       odie "the `channel` in extractor/rust/rust-toolchain.toml is #{toolchain.inspect}, expected nightly-YYYY-MM-DD"
     end
 
-    system "go", "build", *std_go_args(output: libexec/"bin/rivus", ldflags: "-s -w -X main.versionStamp=#{version}"), "./cmd/rivus"
+    # The hashes of the extractors' source (scripts/extractor-hash, as in scripts/build-release-archives.sh) are built
+    # into rivus and into each extractor, so that rivus can tell whether an extractor matches its own source.
+    # A release made before the script existed has no such file; the hashes stay empty and are not passed.
+    hash_script = buildpath/"scripts/extractor-hash"
+    rust_hash = ""
+    dart_hash = ""
+    if hash_script.directory?
+      rust_hash = Utils.safe_popen_read("go", "run", "./scripts/extractor-hash", "rust").strip
+      dart_hash = Utils.safe_popen_read("go", "run", "./scripts/extractor-hash", "dart").strip
+      odie "scripts/extractor-hash printed an empty hash" if rust_hash.empty? || dart_hash.empty?
+    end
+    go_ldflags = "-s -w -X main.versionStamp=#{version}"
+    unless rust_hash.empty?
+      go_ldflags += " -X main.rustSourceHash=#{rust_hash} -X main.dartSourceHash=#{dart_hash}"
+    end
+
+    system "go", "build", *std_go_args(output: libexec/"bin/rivus", ldflags: go_ldflags), "./cmd/rivus"
 
     # Dart: the extractor is compiled to a native executable (about 0.2-0.6 s to start, against 1.6-3.8 s for a kernel
     # snapshot). The executable reads the `dart:*` sources of a Dart SDK at run time, so it is not self-contained:
     # the wrappers below put dart-sdk's bin first on PATH, where rivus finds the SDK from the `dart` it finds there.
     cd "extractor/dart" do
       system "dart", "pub", "get", "--enforce-lockfile"
-      system "dart", "compile", "exe", "bin/rivus_dart.dart", "-o", libexec/"rivus-dart"
+      dart_defines = dart_hash.empty? ? [] : ["-DRIVUS_SRC_HASH=#{dart_hash}"]
+      system "dart", "compile", "exe", *dart_defines, "bin/rivus_dart.dart", "-o", libexec/"rivus-dart"
     end
     dart_path = formula_opt_bin("dart-sdk")
     (bin/"rivus-dart").write <<~SH
@@ -56,7 +73,9 @@ class Rivus < Formula
 
     home = buildpath/"home"
     mkdir_p home
+    rust_env = rust_hash.empty? ? {} : { RIVUS_EXTRACTOR_SRC_HASH: rust_hash }
     with_env(
+      **rust_env,
       SDKROOT:          MacOS.sdk_path.to_s,
       PATH:             "#{tc}/bin:/usr/bin:/bin",
       HOME:             home.to_s,
