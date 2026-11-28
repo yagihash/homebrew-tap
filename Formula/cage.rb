@@ -14,7 +14,7 @@ class Cage < Formula
     # (cage acts as the remote helper by that name, ADR-016), and cage-se (Swift, the Secure Enclave helper) beside
     # cage, where cage looks for it first.
     ENV["CGO_ENABLED"] = "0"
-    go_ldflags = "-s -w -X github.com/yagihash/cage/internal/cli.Version=#{version}"
+    go_ldflags = "-X github.com/yagihash/cage/internal/cli.Version=#{version}"
     system "go", "build", *std_go_args(output: bin/"cage", ldflags: go_ldflags), "./cmd/cage"
     bin.install_symlink "cage" => "git-remote-cage"
     system "swiftc", "-O", "-target", "arm64-apple-macos14", "se/cage-se.swift", "-o", bin/"cage-se"
