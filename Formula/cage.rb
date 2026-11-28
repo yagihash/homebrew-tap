@@ -1,8 +1,8 @@
 class Cage < Formula
   desc "Harness that runs coding agents in a sandbox, each as a GitHub App of its own"
   homepage "https://github.com/yagihash/cage"
-  url "https://github.com/yagihash/cage/releases/download/v0.1.2/cage_0.1.2_source.tar.gz"
-  sha256 "a2ad0256a4223bbf825abd86c5372d885504d75dab587132a989ea2ed8664eda"
+  url "https://github.com/yagihash/cage/releases/download/v0.1.3/cage_0.1.3_source.tar.gz"
+  sha256 "39c0f3e1473e3befd539ed0d5f70b248c86f45aa04f0f74ff4467d3be3c1b34c"
   license "MIT"
   head "https://github.com/yagihash/cage.git", branch: "main"
 
